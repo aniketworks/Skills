@@ -1,0 +1,169 @@
+---
+title: "Cyclistic_data_analysis"
+author: "Aniket.P"
+date: '2022-07-31'
+output: html_document
+---
+
+# Data Cleaning
+
+So the idea of this R Markdown file is to use R to explore different fields of the data set and then try to cleanup as much as possible.
+
+## 1. Loading necessary packages
+
+Let's start off with installing and loading necessary packages. We are using:
+  
+  1. tidyverse,
+  2. janitor,
+  3. lubridate,
+  4. ggplot2
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(ggplot2)
+rm(list = ls())
+```
+
+## 2. Preparing the Data.frame
+
+You can download the raw data from this
+[link](https://divvy-tripdata.s3.amazonaws.com/index.html).
+
+Now we can go ahead and read CSVs one by one, for months of data. The data is
+available for many months but, due to R Studio Cloud RAM constraints, I am only
+analyzing 3 months of data.
+
+```{r Read_data, echo=TRUE}
+df_1 <- read.csv('./Raw_data/202101-divvy-tripdata.csv')
+df_2 <- read.csv('./Raw_data/202102-divvy-tripdata.csv')
+df_3 <- read.csv('./Raw_data/202103-divvy-tripdata.csv')
+```
+
+
+The next task is to concatenate all these dataframes to get the final complete 
+data frame. Then we can continue with cleaning. The next code chunk will complete
+data preparation step.
+
+```{r final_frame, echo=TRUE, paged.print=TRUE}
+#let's bind the data frames together to create a single df
+bikerides <- rbind(df_1,df_2,df_3)
+
+# Since Month's data is not needed, let's clean redundant dfs to free the Memory.
+rm(df_1,df_2,df_3)
+
+```
+
+## 3. Cleaning the data.frame
+
+### 3.1 - Cleaning empty rows and columns using Janitor
+
+Now we can clean empty rows and columns from our combined Data.frame. We will 
+specifically use remove_empty function from janitor package.
+
+So this function cleans only those rows and columns that have missing data
+throughout.
+
+```{r cleaning empty rows and columns, echo=TRUE, paged.print=TRUE}
+#Remove empty cols and rows. Only remove rows or columns if it is completely NA
+bikerides <- janitor::remove_empty(bikerides, which = c("cols"))
+bikerides <- janitor::remove_empty(bikerides, which = c("rows"))
+
+```
+
+### 3.2 - Converting DateTime to Date/Time using lubridate
+
+Now we can convert *started_at* and *ended_at* fields using ymd_hms from
+lubridate libraries.
+
+```{r DateTime conversion to Date/Time, echo=TRUE}
+
+#separating date from datetime
+bikerides$Ymd <- as.Date(bikerides$started_at)
+
+#Type casting char datetime to datetime type
+bikerides$started_at <-
+  lubridate::ymd_hms(bikerides$started_at)
+
+#Type casting char datetime to datetime type
+bikerides$ended_at <-
+  lubridate::ymd_hms(bikerides$ended_at)
+```
+
+### 3.3 Checking for integrity between related DateTime fields
+
+In our case, we have *start_time* and *end_time*. we will calculate the
+difference between the two using difftime function as shown below.
+
+```{r Calculating difference between date time, echo=TRUE}
+#These start and end hour fields are useful in visualization step that we are
+#going to see up next
+bikerides$start_hour <-
+  lubridate::hour(bikerides$started_at)
+
+bikerides$end_hour <-
+  lubridate::hour(bikerides$ended_at)
+
+bikerides$Hours <-
+  difftime(bikerides$ended_at,bikerides$started_at,units = c("hours"))
+
+bikerides$Minutes <-
+  difftime(bikerides$ended_at,bikerides$started_at,units = c("mins"))
+```
+
+Finally we can filter the data and drop the NAs to get the clean frame wih only 
+necessary fields.
+'df' is our final data frame after cleaning:
+
+```{r final dataframe filter, echo=TRUE}
+df <- bikerides %>% 
+  filter(Hours > 0) %>% 
+  drop_na() %>% 
+  select(-ride_id, -end_station_name, -end_station_id)
+
+head(df)
+```
+
+# Discussing concerns with Stakeholders
+
+In this step we raised our messy data concerns with stakeholders and get the 
+confirmations about it.
+
+*Data Wrangling Change Log*
+
+* Total Rows in concatenated dataset: 374,952
+* I raised the following three **concerns(about the raw data)** with Lily 
+Moreno(Director):
+  + 18 row with negative trip durations
+  + 484 cells with missing data
+* These are the **Confirmation(about the reported concerns)** I got from 
+Moreno(Director):
+  + We can ignore the rows with trip duration less than 0.
+  + We can ignore the rows with missing start_station_name, and station_id.(*
+  Note: complete data frame have missing start_station_name and station_id.*)
+  + And should focus on using the start_station_name to perform aggregate 
+  functions on date, start_station_name, member casual and rideable type.
+  
+# Data Visualization/ Exploratory analysis
+
+### Example Plot 1: Distribution of number of Rides by Start hour
+
+```{r Data Visualization 1, echo=TRUE}
+df %>% count(start_hour, sort=T) %>% 
+  ggplot() + geom_line(aes(x=start_hour, y=n))+
+  labs(title = "Count of bike ride by start hour: 3 months of data",
+       x = "Start Hour",
+       y = "Count of Rides")
+```
+
+### Example Plot 2: Distribution of number of Rides by Start hour
+
+```{r Data Visualization 2, echo=TRUE}
+df %>% count(end_hour, sort=T) %>% 
+  ggplot() + geom_line(aes(x=end_hour, y=n))+
+  labs(title = "Count of bike ride by end hour: 3 months of data",
+       x = "End Hour",
+       y = "Count of Rides")
+```
+
